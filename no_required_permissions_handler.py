@@ -8,7 +8,6 @@ from datetime import datetime, timedelta, timezone
 import requests
 from oauth2client.service_account import ServiceAccountCredentials
 
-# Убираем DeprecationWarning
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 logging.basicConfig(level=logging.INFO)
@@ -88,13 +87,13 @@ def main():
         if esf_status != "NO_REQUIRED_PERMISSIONS":
             continue
 
+        new_row = None
         if tin in target_tin_map:
             row_num, target_row = target_tin_map[tin]
             old_status = target_row[esf_idx] if esf_idx < len(target_row) else ""
             if old_status != esf_status:
                 target_ws.update_cell(row_num, esf_idx + 1, esf_status)
                 target_ws.update_cell(row_num, len(source_header) + 2, almaty_now)
-            continue
         else:
             new_row = source_row + [almaty_now, "", "", ""]
             target_ws.append_row(new_row)
@@ -103,48 +102,47 @@ def main():
 
         # === UseDesk обработка ===
         client_id = None
-try:
-    search_resp = requests.post(USEDESK_CLIENT_SEARCH_URL, json={
-        "api_token": USE_DESK_TOKEN,
-        "query": phone,
-        "search_type": "partial_match"
-    })
-    res_json = search_resp.json()
-    if isinstance(res_json, dict):
-        clients = res_json.get("clients", [])
-        if clients:
-            client_id = clients[0]["id"]
-            update_payload = {
+        try:
+            search_resp = requests.post(USEDESK_CLIENT_SEARCH_URL, json={
                 "api_token": USE_DESK_TOKEN,
-                "client_id": client_id,
-                "name": tin,
-                "position": extract_first_and_middle(name)
-            }
-            requests.post(USEDESK_UPDATE_CLIENT_URL, json=update_payload)
-        else:
-            # если клиентов нет — создаём
-            try:
-                create_resp = requests.post(USEDESK_CREATE_CLIENT_URL, json={
-                    "api_token": USE_DESK_TOKEN,
-                    "name": tin,
-                    "phone": phone,
-                    "position": extract_first_and_middle(name)
-                })
-                create_data = create_resp.json()
-                if isinstance(create_data, dict):
-                    client_id = create_data.get("client_id")
+                "query": phone,
+                "search_type": "partial_match"
+            })
+            res_json = search_resp.json()
+            if isinstance(res_json, dict):
+                clients = res_json.get("clients", [])
+                if clients:
+                    client_id = clients[0]["id"]
+                    update_payload = {
+                        "api_token": USE_DESK_TOKEN,
+                        "client_id": client_id,
+                        "name": tin,
+                        "position": extract_first_and_middle(name)
+                    }
+                    requests.post(USEDESK_UPDATE_CLIENT_URL, json=update_payload)
                 else:
-                    logger.error(f"❌ Unexpected response from client creation: {create_data}")
-                    continue
-            except Exception as e:
-                logger.error(f"❌ Ошибка при создании клиента: {e}")
+                    try:
+                        create_resp = requests.post(USEDESK_CREATE_CLIENT_URL, json={
+                            "api_token": USE_DESK_TOKEN,
+                            "name": tin,
+                            "phone": phone,
+                            "position": extract_first_and_middle(name)
+                        })
+                        create_data = create_resp.json()
+                        if isinstance(create_data, dict):
+                            client_id = create_data.get("client_id")
+                        else:
+                            logger.error(f"❌ Unexpected response from client creation: {create_data}")
+                            continue
+                    except Exception as e:
+                        logger.error(f"❌ Ошибка при создании клиента: {e}")
+                        continue
+            else:
+                logger.error(f"❌ Unexpected response from client search: {res_json}")
                 continue
-    else:
-        logger.error(f"❌ Unexpected response from client search (not dict): {res_json}")
-        continue
-except Exception as e:
-    logger.error(f"❌ Ошибка работы с UseDesk клиентом: {e}")
-    continue
+        except Exception as e:
+            logger.error(f"❌ Ошибка UseDesk client block: {e}")
+            continue
 
         # === Тикет ===
         ticket_url = ""
