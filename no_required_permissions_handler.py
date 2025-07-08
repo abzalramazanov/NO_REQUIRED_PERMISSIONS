@@ -92,15 +92,11 @@ def main():
         target_ws.update("A1", [target_header])
         target_rows = [target_header]
 
-    try:
-        tin_idx = source_header.index("tin")
-        name_idx = source_header.index("name")
-        phone_idx = source_header.index("phone")
-        esf_idx = source_header.index("Статус ЭСФ")
-    except ValueError as e:
-        raise Exception("❌ Не найдены нужные колонки в таблице") from e
+    tin_idx = source_header.index("tin")
+    name_idx = source_header.index("name")
+    phone_idx = source_header.index("phone")
+    esf_idx = source_header.index("Статус ЭСФ")
 
-    # 🔍 Копируем в NO_REQUIRED_PERMISSIONS строки, где ЭСФ = NO_REQUIRED_PERMISSIONS
     target_tin_set = {r[tin_idx].strip() for r in target_rows[1:] if len(r) > tin_idx}
 
     for row in source_data:
@@ -113,7 +109,6 @@ def main():
             target_ws.append_row(full_row)
             logger.info(f"📥 Добавлена строка с ИИН {tin}")
 
-    # 🔁 Теперь обрабатываем строки в NO_REQUIRED_PERMISSIONS
     target_rows = target_ws.get_all_values()
 
     for i, row in enumerate(target_rows[1:], start=2):
@@ -183,9 +178,43 @@ def main():
                     send_telegram_notification(tin, ticket_url, target_ws, i, target_header)
                     logger.info(f"✏️ Обновлён тикет {oldest_ticket}")
                 else:
-                    logger.warning(f"⚠️ Тикет закрыт или не найден — можно создать новый")
+                    logger.info("🆕 Создаём новый тикет...")
+                    ticket_resp = requests.post("https://api.usedesk.ru/create/ticket", json={
+                        "api_token": USE_DESK_TOKEN,
+                        "subject": "OscarSigmaIP",
+                        "message": "SIGMA IP",
+                        "client_id": client_id,
+                        "channel_id": 66235,
+                        "from": "client"
+                    })
+                    ticket_data = ticket_resp.json()
+                    ticket_id = ticket_data.get("ticket_id") or ticket_data.get("ticket", {}).get("id")
+                    if ticket_id:
+                        ticket_url = f"https://secure.usedesk.ru/tickets/{ticket_id}"
+                        target_ws.update_cell(i, len(target_header) - 1, ticket_url)
+                        send_telegram_notification(tin, ticket_url, target_ws, i, target_header)
+                        logger.info(f"✅ Создан новый тикет: {ticket_id}")
+                    else:
+                        logger.warning(f"⚠️ Не удалось создать тикет для клиента {client_id}")
             else:
-                logger.warning(f"📭 У клиента нет тикетов — можно создать")
+                logger.info("🆕 У клиента не было тикетов — создаём...")
+                ticket_resp = requests.post("https://api.usedesk.ru/create/ticket", json={
+                    "api_token": USE_DESK_TOKEN,
+                    "subject": "OscarSigmaIP",
+                    "message": "SIGMA IP",
+                    "client_id": client_id,
+                    "channel_id": 66235,
+                    "from": "client"
+                })
+                ticket_data = ticket_resp.json()
+                ticket_id = ticket_data.get("ticket_id") or ticket_data.get("ticket", {}).get("id")
+                if ticket_id:
+                    ticket_url = f"https://secure.usedesk.ru/tickets/{ticket_id}"
+                    target_ws.update_cell(i, len(target_header) - 1, ticket_url)
+                    send_telegram_notification(tin, ticket_url, target_ws, i, target_header)
+                    logger.info(f"✅ Создан тикет: {ticket_id}")
+                else:
+                    logger.warning(f"⚠️ Ошибка при создании тикета")
 
         except Exception as e:
             logger.error(f"❌ Ошибка обработки строки {tin}: {e}")
