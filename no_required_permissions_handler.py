@@ -1,5 +1,4 @@
 
-# 🔥 Скрипт с защитой от дублирования тикетов и телеги + Render-ready
 import os
 import gspread
 import logging
@@ -8,7 +7,7 @@ import base64
 from datetime import datetime, timedelta, timezone
 from oauth2client.service_account import ServiceAccountCredentials
 
-# ⬇️ Render: сохраняем credentials.json из base64 переменной
+# 💾 Сохраняем credentials.json из переменной
 def save_credentials_from_env():
     encoded_creds = os.getenv("CREDENTIALS_JSON")
     if not encoded_creds:
@@ -72,12 +71,10 @@ def main():
     if not USE_DESK_TOKEN:
         raise Exception("❌ USE_DESK_TOKEN не найден.")
 
-    creds_path = "credentials.json"
-    if not os.path.exists(creds_path):
-        raise Exception("❌ Файл credentials.json не найден.")
-
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(creds_path, scope)
+    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive"
+    ])
     client = gspread.authorize(creds)
 
     sheet = client.open_by_key(SPREADSHEET_ID)
@@ -88,8 +85,6 @@ def main():
 
     source_rows = source_ws.get_all_values()
     source_header = source_rows[0]
-    source_data = source_rows[1:]
-
     target_rows = target_ws.get_all_values()
     target_header = target_rows[0]
 
@@ -99,24 +94,24 @@ def main():
     esf_idx = source_header.index("Статус ЭСФ")
 
     for i, row in enumerate(target_rows[1:], start=2):
-        if len(row) <= max(tin_idx, name_idx, phone_idx, esf_idx):
-            continue
-
-        tin = row[tin_idx].strip()
-        name_full = row[name_idx].strip()
-        phone = row[phone_idx].strip().replace("+", "").replace(" ", "")
-        esf_status = row[esf_idx].strip()
+        tin = row[tin_idx].strip() if len(row) > tin_idx else ""
+        name_full = row[name_idx].strip() if len(row) > name_idx else ""
+        phone = row[phone_idx].strip().replace("+", "").replace(" ", "") if len(row) > phone_idx else ""
+        esf_status = row[esf_idx].strip() if len(row) > esf_idx else ""
         usedesk_link = row[-2].strip() if len(row) >= len(target_header) - 1 else ""
         telegram_status = row[-1].strip().lower() if len(row) >= len(target_header) else ""
 
+        logger.info(f"🔍 Обрабатываю строку {i}: ИИН={tin}, ЭСФ={esf_status}, phone={phone}")
+
         if not tin or not phone or not name_full:
+            logger.info("❌ Пропущено: пустой tin, phone или name")
             continue
-
+        if esf_status != "NO_REQUIRED_PERMISSIONS":
+            logger.info(f"⛔ Пропущено: статус ЭСФ = {esf_status}, нужен NO_REQUIRED_PERMISSIONS")
+            continue
         if usedesk_link and telegram_status == "отправлено":
-            logger.info(f"⏩ Уже обработан: {tin}, пропускаем")
+            logger.info("⏩ Уже обработано ранее — UseDesk и Telegram заполнены")
             continue
-
-        logger.info(f"\n🔍 Проверка клиента: ИИН {tin}, имя: {name_full}, телефон: {phone}")
 
         try:
             resp = requests.post("https://api.usedesk.ru/clients", json={
