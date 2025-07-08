@@ -1,3 +1,4 @@
+
 import os
 import gspread
 import logging
@@ -6,7 +7,6 @@ import base64
 from datetime import datetime, timedelta, timezone
 from oauth2client.service_account import ServiceAccountCredentials
 
-# 🔐 Сохраняем credentials.json из переменной окружения
 def save_credentials_from_env():
     encoded_creds = os.getenv("CREDENTIALS_JSON")
     if not encoded_creds:
@@ -17,13 +17,17 @@ def save_credentials_from_env():
 
 save_credentials_from_env()
 
-# 🔧 Логгинг
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID") or "-1001517811601"
 TELEGRAM_THREAD_ID = 8282
+USE_DESK_TOKEN = os.getenv("USE_DESK_TOKEN")
+
+SPREADSHEET_ID = '1JeYJqv5q_S3CfC855Tl5xjP7nD5Fkw9jQXrVyvEXK1Y'
+SOURCE_SHEET = 'unique drivers main'
+TARGET_SHEET = 'NO_REQUIRED_PERMISSIONS'
 
 def extract_position(name):
     parts = name.strip().split()
@@ -63,15 +67,7 @@ def send_telegram_notification(tin, ticket_url, target_ws, row_num, target_heade
         logger.error(f"❌ Ошибка Telegram: {resp.text}")
 
 def main():
-    logger.info("🚀 Скрипт запущен, читаем Google Таблицу...")
-
-    SPREADSHEET_ID = '1JeYJqv5q_S3CfC855Tl5xjP7nD5Fkw9jQXrVyvEXK1Y'
-    SOURCE_SHEET = 'unique drivers main'
-    TARGET_SHEET = 'NO_REQUIRED_PERMISSIONS'
-    USE_DESK_TOKEN = os.getenv("USE_DESK_TOKEN")
-
-    if not USE_DESK_TOKEN:
-        raise Exception("❌ USE_DESK_TOKEN не найден.")
+    logger.info("🚀 Старт обработки...")
 
     creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", [
         "https://spreadsheets.google.com/feeds",
@@ -87,13 +83,38 @@ def main():
 
     source_rows = source_ws.get_all_values()
     source_header = source_rows[0]
-    target_rows = target_ws.get_all_values()
-    target_header = target_rows[0]
+    source_data = source_rows[1:]
 
-    tin_idx = source_header.index("tin")
-    name_idx = source_header.index("name")
-    phone_idx = source_header.index("phone")
-    esf_idx = source_header.index("Статус ЭСФ")
+    target_rows = target_ws.get_all_values()
+    target_header = target_rows[0] if target_rows else []
+    if not target_header:
+        target_header = source_header + ["Время добавления", "Обновлено", "UseDesk", "Telegram"]
+        target_ws.update("A1", [target_header])
+        target_rows = [target_header]
+
+    try:
+        tin_idx = source_header.index("tin")
+        name_idx = source_header.index("name")
+        phone_idx = source_header.index("phone")
+        esf_idx = source_header.index("Статус ЭСФ")
+    except ValueError as e:
+        raise Exception("❌ Не найдены нужные колонки в таблице") from e
+
+    # 🔍 Копируем в NO_REQUIRED_PERMISSIONS строки, где ЭСФ = NO_REQUIRED_PERMISSIONS
+    target_tin_set = {r[tin_idx].strip() for r in target_rows[1:] if len(r) > tin_idx}
+
+    for row in source_data:
+        if len(row) <= esf_idx:
+            continue
+        esf_status = row[esf_idx].strip()
+        tin = row[tin_idx].strip()
+        if esf_status == "NO_REQUIRED_PERMISSIONS" and tin not in target_tin_set:
+            full_row = row + [now, "", "", ""]
+            target_ws.append_row(full_row)
+            logger.info(f"📥 Добавлена строка с ИИН {tin}")
+
+    # 🔁 Теперь обрабатываем строки в NO_REQUIRED_PERMISSIONS
+    target_rows = target_ws.get_all_values()
 
     for i, row in enumerate(target_rows[1:], start=2):
         tin = row[tin_idx].strip() if len(row) > tin_idx else ""
