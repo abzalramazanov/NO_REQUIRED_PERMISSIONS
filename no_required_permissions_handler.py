@@ -3,9 +3,13 @@ import gspread
 import logging
 import base64
 import time
+import warnings
 from datetime import datetime, timedelta, timezone
 import requests
 from oauth2client.service_account import ServiceAccountCredentials
+
+# Убираем DeprecationWarning
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -117,25 +121,22 @@ def main():
                 }
                 requests.post(USEDESK_UPDATE_CLIENT_URL, json=update_payload)
             else:
-try:
-    create_resp = requests.post(USEDESK_CREATE_CLIENT_URL, json={
-        "api_token": USE_DESK_TOKEN,
-        "name": tin,
-        "phone": phone,
-        "position": extract_first_and_middle(name)
-    })
-    create_data = create_resp.json()
-    if isinstance(create_data, dict):
-        client_id = create_data.get("client_id")
-    else:
-        logger.error(f"❌ Unexpected response from client creation: {create_data}")
-        continue
-except Exception as e:
-    logger.error(f"❌ Ошибка при создании клиента: {e}")
-    continue
-else:
-    logger.error(f"❌ Unexpected response from client creation: {create_data}")
-    continue
+                try:
+                    create_resp = requests.post(USEDESK_CREATE_CLIENT_URL, json={
+                        "api_token": USE_DESK_TOKEN,
+                        "name": tin,
+                        "phone": phone,
+                        "position": extract_first_and_middle(name)
+                    })
+                    create_data = create_resp.json()
+                    if isinstance(create_data, dict):
+                        client_id = create_data.get("client_id")
+                    else:
+                        logger.error(f"❌ Unexpected response from client creation: {create_data}")
+                        continue
+                except Exception as e:
+                    logger.error(f"❌ Ошибка при создании клиента: {e}")
+                    continue
         except Exception as e:
             logger.error(f"❌ Ошибка работы с UseDesk клиентом: {e}")
             continue
@@ -143,39 +144,49 @@ else:
         # === Тикет ===
         ticket_url = ""
         if client_id:
-            ticket_payload = {
-                "api_token": USE_DESK_TOKEN,
-                "subject": "ioooo",
-                "message": "asdasdasd",
-                "client_id": client_id,
-                "channel_id": 66235,
-                "from": "user"
-            }
-            ticket_resp = requests.post(USEDESK_CREATE_TICKET_URL, json=ticket_payload)
-            res = ticket_resp.json()
-            ticket_id = res.get("ticket_id") or res.get("ticket", {}).get("id")
-            if ticket_id:
-                ticket_url = f"https://secure.usedesk.ru/tickets/{ticket_id}"
-                target_ws.update_cell(row_num, len(target_header) - 1, ticket_url)
+            try:
+                ticket_payload = {
+                    "api_token": USE_DESK_TOKEN,
+                    "subject": "ioooo",
+                    "message": "asdasdasd",
+                    "client_id": client_id,
+                    "channel_id": 66235,
+                    "from": "user"
+                }
+                ticket_resp = requests.post(USEDESK_CREATE_TICKET_URL, json=ticket_payload)
+                res = ticket_resp.json()
+                ticket_id = res.get("ticket_id") or res.get("ticket", {}).get("id")
+                if ticket_id:
+                    ticket_url = f"https://secure.usedesk.ru/tickets/{ticket_id}"
+                    target_ws.update_cell(row_num, len(target_header) - 1, ticket_url)
+            except Exception as e:
+                logger.error(f"❌ Ошибка при создании тикета: {e}")
+                continue
 
         # === Telegram ===
         if ticket_url:
-            text = (
-                f"📢 Ошибка у клиента:\n"
-                f"ИИН: {tin}\n"
-                f"Ошибка: NO_REQUIRED_PERMISSIONS (нет статуса ИП)\n"
-                f"Тикет создан: {ticket_url}"
-            )
-            tg_resp = requests.post(
-                f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-                data={
-                    "chat_id": TELEGRAM_CHAT_ID,
-                    "text": text,
-                    "message_thread_id": TELEGRAM_THREAD_ID
-                }
-            )
-            if tg_resp.status_code == 200:
-                target_ws.update_cell(row_num, len(target_header), "отправлено")
+            try:
+                text = (
+                    f"📢 Ошибка у клиента:\n"
+                    f"ИИН: {tin}\n"
+                    f"Ошибка: NO_REQUIRED_PERMISSIONS (нет статуса ИП)\n"
+                    f"Тикет создан: {ticket_url}"
+                )
+                tg_resp = requests.post(
+                    f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+                    data={
+                        "chat_id": TELEGRAM_CHAT_ID,
+                        "text": text,
+                        "message_thread_id": TELEGRAM_THREAD_ID
+                    }
+                )
+                if tg_resp.status_code == 200:
+                    target_ws.update_cell(row_num, len(target_header), "отправлено")
+                else:
+                    logger.error(f"❌ Ошибка Telegram: {tg_resp.text}")
+            except Exception as e:
+                logger.error(f"❌ Telegram send error: {e}")
+                continue
 
     logger.info("✅ Готово!")
 
