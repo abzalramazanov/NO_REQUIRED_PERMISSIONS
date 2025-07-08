@@ -123,7 +123,12 @@ def main():
                     "phone": phone,
                     "position": extract_first_and_middle(name)
                 })
-                client_id = create_resp.json().get("client_id")
+create_data = create_resp.json()
+if isinstance(create_data, dict):
+    client_id = create_data.get("client_id")
+else:
+    logger.error(f"❌ Unexpected response from client creation: {create_data}")
+    continue
         except Exception as e:
             logger.error(f"❌ Ошибка работы с UseDesk клиентом: {e}")
             continue
