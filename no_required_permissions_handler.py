@@ -117,15 +117,22 @@ def main():
                 }
                 requests.post(USEDESK_UPDATE_CLIENT_URL, json=update_payload)
             else:
-                create_resp = requests.post(USEDESK_CREATE_CLIENT_URL, json={
-                    "api_token": USE_DESK_TOKEN,
-                    "name": tin,
-                    "phone": phone,
-                    "position": extract_first_and_middle(name)
-                })
-create_data = create_resp.json()
-if isinstance(create_data, dict):
-    client_id = create_data.get("client_id")
+try:
+    create_resp = requests.post(USEDESK_CREATE_CLIENT_URL, json={
+        "api_token": USE_DESK_TOKEN,
+        "name": tin,
+        "phone": phone,
+        "position": extract_first_and_middle(name)
+    })
+    create_data = create_resp.json()
+    if isinstance(create_data, dict):
+        client_id = create_data.get("client_id")
+    else:
+        logger.error(f"❌ Unexpected response from client creation: {create_data}")
+        continue
+except Exception as e:
+    logger.error(f"❌ Ошибка при создании клиента: {e}")
+    continue
 else:
     logger.error(f"❌ Unexpected response from client creation: {create_data}")
     continue
