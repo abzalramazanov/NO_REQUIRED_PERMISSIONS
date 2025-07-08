@@ -36,10 +36,9 @@ def get_latest_open_ticket(client_data, token):
             data = resp.json()
             status = data.get("ticket", {}).get("status_id")
             if status and int(status) != 3:
-                logger.info(f"🎯 Последний тикет {ticket_id}, статус: {status}")
                 return ticket_id
-        except Exception as e:
-            logger.warning(f"⚠️ Не удалось получить статус тикета {ticket_id}: {e}")
+        except:
+            continue
     return None
 
 def main():
@@ -116,6 +115,7 @@ def main():
 
         # ==== UseDesk ====
         client_id = None
+        client_data = None
         ticket_url = ""
         try:
             search_resp = requests.post(client_search_url, json={
@@ -124,39 +124,40 @@ def main():
                 "search_type": "partial_match"
             })
             res_json = search_resp.json()
+            clients = []
             if isinstance(res_json, dict):
                 clients = res_json.get("clients", [])
-                if clients:
-                    client_data = clients[0]
-                    client_id = client_data["id"]
-                    requests.post(update_client_url, json={
-                        "api_token": USE_DESK_TOKEN,
-                        "client_id": client_id,
-                        "name": tin,
-                        "position": extract_first_and_middle(name)
-                    })
-                else:
-                    create_resp = requests.post(create_client_url, json={
-                        "api_token": USE_DESK_TOKEN,
-                        "name": tin,
-                        "phone": phone,
-                        "position": extract_first_and_middle(name)
-                    })
-                    create_data = create_resp.json()
-                    client_id = create_data.get("client_id")
+            elif isinstance(res_json, list):
+                clients = res_json
             else:
-                logger.error("❌ Unexpected client search response")
+                logger.error(f"❌ Неподдерживаемый формат ответа: {type(res_json)}")
                 continue
+
+            if clients:
+                client_data = clients[0]
+                client_id = client_data["id"]
+                requests.post(update_client_url, json={
+                    "api_token": USE_DESK_TOKEN,
+                    "client_id": client_id,
+                    "name": tin,
+                    "position": extract_first_and_middle(name)
+                })
+            else:
+                create_resp = requests.post(create_client_url, json={
+                    "api_token": USE_DESK_TOKEN,
+                    "name": tin,
+                    "phone": phone,
+                    "position": extract_first_and_middle(name)
+                })
+                create_data = create_resp.json()
+                client_id = create_data.get("client_id")
         except Exception as e:
-            logger.error(f"❌ Ошибка поиска/создания клиента: {e}")
+            logger.error(f"❌ Ошибка UseDesk: {e}")
             continue
 
         # ==== Ticket ====
         try:
-            if client_data := clients[0] if clients else None:
-                latest_open_ticket = get_latest_open_ticket(client_data, USE_DESK_TOKEN)
-            else:
-                latest_open_ticket = None
+            latest_open_ticket = get_latest_open_ticket(client_data, USE_DESK_TOKEN) if client_data else None
 
             if latest_open_ticket:
                 requests.post(update_ticket_url, json={
