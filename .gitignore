@@ -1,0 +1,11 @@
+# Игнорим ключи и временные файлы
+credentials.json
+.env
+__pycache__/
+*.pyc
+
+# macOS кеш
+.DS_Store
+
+# VS Code
+.vscode/
