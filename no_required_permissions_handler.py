@@ -45,7 +45,7 @@ def main():
     save_credentials()
 
     SPREADSHEET_ID = '1JeYJqv5q_S3CfC855Tl5xjP7nD5Fkw9jQXrVyvEXK1Y'
-    SOURCE_SHEET = 'unique drivers main'
+    SOURCE_SHEET = 'unique drivers mainnnne'  # ТЕСТОВЫЙ ЛИСТ
     TARGET_SHEET = 'NO_REQUIRED_PERMISSIONS'
 
     USE_DESK_TOKEN = os.getenv("USE_DESK_TOKEN")
@@ -135,8 +135,12 @@ def main():
                 continue
 
             if clients:
-                client_data = clients[0]
+                client_data = next(
+                    (c for c in clients if phone in c.get("phone", "")),
+                    clients[0]
+                )
                 client_id = client_data["id"]
+                logger.info(f"🟢 Клиент найден: ID {client_id}")
                 requests.post(update_client_url, json={
                     "api_token": USE_DESK_TOKEN,
                     "client_id": client_id,
@@ -152,6 +156,7 @@ def main():
                 })
                 create_data = create_resp.json()
                 client_id = create_data.get("client_id")
+                logger.info(f"🆕 Клиент создан: ID {client_id}")
         except Exception as e:
             logger.error(f"❌ Ошибка UseDesk: {e}")
             continue
@@ -164,22 +169,23 @@ def main():
                 requests.post(update_ticket_url, json={
                     "api_token": USE_DESK_TOKEN,
                     "ticket_id": latest_open_ticket,
-                    "subject": "NO_REQUIRED_PERMISSIONS",
-                    "tag": "NO_REQUIRED_PERMISSIONS"
+                    "subject": "OscarSigmaIP",
+                    "tag": "OscarSigmaIP"
                 })
                 requests.post(create_comment_url, json={
                     "api_token": USE_DESK_TOKEN,
                     "ticket_id": latest_open_ticket,
-                    "message": "Ошибка NO_REQUIRED_PERMISSIONS",
+                    "message": "asdasdasd",
                     "type": "public",
                     "from": "client"
                 })
                 ticket_url = f"https://secure.usedesk.ru/tickets/{latest_open_ticket}"
+                logger.info(f"📎 Обновлён тикет: {ticket_url}")
             else:
                 ticket_resp = requests.post(create_ticket_url, json={
                     "api_token": USE_DESK_TOKEN,
-                    "subject": "NO_REQUIRED_PERMISSIONS",
-                    "message": "Ошибка NO_REQUIRED_PERMISSIONS",
+                    "subject": "OscarSigmaIP",
+                    "message": "asdasdasd",
                     "client_id": client_id,
                     "channel_id": 66235,
                     "from": "user"
@@ -188,6 +194,7 @@ def main():
                 ticket_id = res.get("ticket_id") or res.get("ticket", {}).get("id")
                 if ticket_id:
                     ticket_url = f"https://secure.usedesk.ru/tickets/{ticket_id}"
+                    logger.info(f"🆕 Создан тикет: {ticket_url}")
             if ticket_url:
                 target_ws.update_cell(row_num, len(target_header) - 1, ticket_url)
         except Exception as e:
