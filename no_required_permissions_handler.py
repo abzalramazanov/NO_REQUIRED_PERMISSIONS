@@ -124,6 +124,7 @@ def main():
                 "search_type": "partial_match"
             })
             res_json = search_resp.json()
+
             clients = []
             if isinstance(res_json, dict):
                 clients = res_json.get("clients", [])
