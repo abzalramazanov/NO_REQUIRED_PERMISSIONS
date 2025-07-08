@@ -1,64 +1,16 @@
-import os
-import gspread
-import logging
-import base64
-import time
-import warnings
-from datetime import datetime, timedelta, timezone
-import requests
-from oauth2client.service_account import ServiceAccountCredentials
-
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-def save_credentials():
-    encoded_creds = os.getenv("CREDENTIALS_JSON")
-    if not encoded_creds:
-        raise Exception("❌ CREDENTIALS_JSON не найдена")
-    decoded_creds = base64.b64decode(encoded_creds).decode("utf-8")
-    with open("credentials.json", "w") as f:
-        f.write(decoded_creds)
-
-def extract_first_and_middle(name: str):
-    parts = name.strip().split()
-    return " ".join(parts[:2]) if len(parts) >= 2 else name.strip()
-
-def get_latest_open_ticket(client_data, token):
-    tickets = client_data.get("tickets", [])
-    for ticket_id in reversed(tickets):
-        try:
-            resp = requests.post("https://api.usedesk.ru/ticket", json={
-                "api_token": token,
-                "ticket_id": ticket_id
-            })
-            data = resp.json()
-            status = data.get("ticket", {}).get("status_id")
-            if status and int(status) != 3:
-                return ticket_id
-        except:
-            continue
-    return None
+# ...импорты и функции save_credentials(), extract_first_and_middle(), get_latest_open_ticket — без изменений...
 
 def main():
     save_credentials()
 
     SPREADSHEET_ID = '1JeYJqv5q_S3CfC855Tl5xjP7nD5Fkw9jQXrVyvEXK1Y'
-    SOURCE_SHEET = 'unique drivers mainnnne'  # ТЕСТОВЫЙ ЛИСТ
+    SOURCE_SHEET = 'unique drivers mainnnne'  # Тестовый лист
     TARGET_SHEET = 'NO_REQUIRED_PERMISSIONS'
 
     USE_DESK_TOKEN = os.getenv("USE_DESK_TOKEN")
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
     TELEGRAM_CHAT_ID = "-1001517811601"
     TELEGRAM_THREAD_ID = 8282
-
-    client_search_url = "https://api.usedesk.ru/clients"
-    update_client_url = "https://api.usedesk.ru/update/client"
-    create_client_url = "https://api.usedesk.ru/create/client"
-    create_ticket_url = "https://api.usedesk.ru/create/ticket"
-    update_ticket_url = "https://api.usedesk.ru/update/ticket"
-    create_comment_url = "https://api.usedesk.ru/create/comment"
 
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
@@ -84,10 +36,11 @@ def main():
         target_ws.update("A1", [target_header])
         target_rows = target_ws.get_all_values()
 
-    target_tin_map = {}
-    for i, row in enumerate(target_rows[1:], start=2):
-        if len(row) > tin_idx:
-            target_tin_map[row[tin_idx].strip()] = (i, row)
+    target_tin_map = {
+        row[tin_idx].strip(): (i, row)
+        for i, row in enumerate(target_rows[1:], start=2)
+        if len(row) > tin_idx
+    }
 
     for row in source_data:
         if len(row) <= max(tin_idx, name_idx, phone_idx, esf_idx):
@@ -113,42 +66,38 @@ def main():
             row_num = len(target_ws.get_all_values())
             target_tin_map[tin] = (row_num, new_row)
 
-        # ==== UseDesk ====
+        # ==== UseDesk: поиск клиента ====
         client_id = None
         client_data = None
         ticket_url = ""
+
         try:
-            search_resp = requests.post(client_search_url, json={
+            search_resp = requests.post("https://api.usedesk.ru/clients", json={
                 "api_token": USE_DESK_TOKEN,
                 "query": phone,
                 "search_type": "partial_match"
             })
             res_json = search_resp.json()
+            clients = res_json.get("clients", []) if isinstance(res_json, dict) else res_json
 
-            clients = []
-            if isinstance(res_json, dict):
-                clients = res_json.get("clients", [])
-            elif isinstance(res_json, list):
-                clients = res_json
-            else:
-                logger.error(f"❌ Неподдерживаемый формат ответа: {type(res_json)}")
-                continue
+            # Точная проверка номера
+            client_data = next(
+                (c for c in clients if phone in c.get("phone", "").split(",")),
+                None
+            )
 
-            if clients:
-                client_data = next(
-                    (c for c in clients if phone in c.get("phone", "")),
-                    clients[0]
-                )
+            if client_data:
                 client_id = client_data["id"]
-                logger.info(f"🟢 Клиент найден: ID {client_id}")
-                requests.post(update_client_url, json={
+                logger.info(f"🟢 Найден клиент ID {client_id} с номером {phone}")
+                requests.post("https://api.usedesk.ru/update/client", json={
                     "api_token": USE_DESK_TOKEN,
                     "client_id": client_id,
                     "name": tin,
                     "position": extract_first_and_middle(name)
                 })
             else:
-                create_resp = requests.post(create_client_url, json={
+                logger.info(f"🆕 Клиент не найден, создаём с номером {phone}")
+                create_resp = requests.post("https://api.usedesk.ru/create/client", json={
                     "api_token": USE_DESK_TOKEN,
                     "name": tin,
                     "phone": phone,
@@ -156,23 +105,23 @@ def main():
                 })
                 create_data = create_resp.json()
                 client_id = create_data.get("client_id")
-                logger.info(f"🆕 Клиент создан: ID {client_id}")
+                logger.info(f"✅ Новый клиент создан: ID {client_id}")
         except Exception as e:
-            logger.error(f"❌ Ошибка UseDesk: {e}")
+            logger.error(f"❌ Ошибка поиска/создания клиента: {e}")
             continue
 
-        # ==== Ticket ====
+        # ==== UseDesk: тикет ====
         try:
             latest_open_ticket = get_latest_open_ticket(client_data, USE_DESK_TOKEN) if client_data else None
 
             if latest_open_ticket:
-                requests.post(update_ticket_url, json={
+                requests.post("https://api.usedesk.ru/update/ticket", json={
                     "api_token": USE_DESK_TOKEN,
                     "ticket_id": latest_open_ticket,
                     "subject": "OscarSigmaIP",
                     "tag": "OscarSigmaIP"
                 })
-                requests.post(create_comment_url, json={
+                requests.post("https://api.usedesk.ru/create/comment", json={
                     "api_token": USE_DESK_TOKEN,
                     "ticket_id": latest_open_ticket,
                     "message": "asdasdasd",
@@ -182,7 +131,7 @@ def main():
                 ticket_url = f"https://secure.usedesk.ru/tickets/{latest_open_ticket}"
                 logger.info(f"📎 Обновлён тикет: {ticket_url}")
             else:
-                ticket_resp = requests.post(create_ticket_url, json={
+                ticket_resp = requests.post("https://api.usedesk.ru/create/ticket", json={
                     "api_token": USE_DESK_TOKEN,
                     "subject": "OscarSigmaIP",
                     "message": "asdasdasd",
@@ -190,11 +139,11 @@ def main():
                     "channel_id": 66235,
                     "from": "user"
                 })
-                res = ticket_resp.json()
-                ticket_id = res.get("ticket_id") or res.get("ticket", {}).get("id")
+                ticket_id = ticket_resp.json().get("ticket_id")
                 if ticket_id:
                     ticket_url = f"https://secure.usedesk.ru/tickets/{ticket_id}"
                     logger.info(f"🆕 Создан тикет: {ticket_url}")
+
             if ticket_url:
                 target_ws.update_cell(row_num, len(target_header) - 1, ticket_url)
         except Exception as e:
