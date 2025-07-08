@@ -1,3 +1,5 @@
+
+# 🔥 Скрипт с защитой от дублирования тикетов и телеги + Render-ready
 import os
 import gspread
 import logging
@@ -6,7 +8,7 @@ import base64
 from datetime import datetime, timedelta, timezone
 from oauth2client.service_account import ServiceAccountCredentials
 
-# 🔐 Render: сохраняем credentials.json из переменной окружения
+# ⬇️ Render: сохраняем credentials.json из base64 переменной
 def save_credentials_from_env():
     encoded_creds = os.getenv("CREDENTIALS_JSON")
     if not encoded_creds:
@@ -15,11 +17,13 @@ def save_credentials_from_env():
     with open("credentials.json", "w") as f:
         f.write(decoded)
 
+save_credentials_from_env()
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID = "-1001517811601"
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID") or "-1001517811601"
 TELEGRAM_THREAD_ID = 8282
 
 def extract_position(name):
@@ -60,8 +64,6 @@ def send_telegram_notification(tin, ticket_url, target_ws, row_num, target_heade
         logger.error(f"❌ Ошибка Telegram: {resp.text}")
 
 def main():
-    save_credentials_from_env()  # 🧩 Сохраняем credentials.json
-
     SPREADSHEET_ID = '1JeYJqv5q_S3CfC855Tl5xjP7nD5Fkw9jQXrVyvEXK1Y'
     SOURCE_SHEET = 'unique drivers main'
     TARGET_SHEET = 'NO_REQUIRED_PERMISSIONS'
@@ -70,10 +72,12 @@ def main():
     if not USE_DESK_TOKEN:
         raise Exception("❌ USE_DESK_TOKEN не найден.")
 
-    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive"
-    ])
+    creds_path = "credentials.json"
+    if not os.path.exists(creds_path):
+        raise Exception("❌ Файл credentials.json не найден.")
+
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_name(creds_path, scope)
     client = gspread.authorize(creds)
 
     sheet = client.open_by_key(SPREADSHEET_ID)
@@ -84,6 +88,8 @@ def main():
 
     source_rows = source_ws.get_all_values()
     source_header = source_rows[0]
+    source_data = source_rows[1:]
+
     target_rows = target_ws.get_all_values()
     target_header = target_rows[0]
 
@@ -159,9 +165,9 @@ def main():
                     send_telegram_notification(tin, ticket_url, target_ws, i, target_header)
                     logger.info(f"✏️ Обновлён тикет {oldest_ticket}")
                 else:
-                    logger.warning(f"⚠️ Тикет закрыт. Можно создать новый, если потребуется.")
+                    logger.warning(f"⚠️ Тикет закрыт или не найден. Можно создать новый при необходимости.")
             else:
-                logger.warning(f"📭 У клиента нет тикетов. Можно создать новый, если нужно.")
+                logger.warning(f"📭 У клиента нет тикетов. Можно создать новый при необходимости.")
 
         except Exception as e:
             logger.error(f"❌ Ошибка обработки строки {tin}: {e}")
