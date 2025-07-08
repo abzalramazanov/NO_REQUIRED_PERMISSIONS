@@ -1,4 +1,3 @@
-
 import os
 import gspread
 import logging
@@ -7,7 +6,7 @@ import base64
 from datetime import datetime, timedelta, timezone
 from oauth2client.service_account import ServiceAccountCredentials
 
-# 💾 Сохраняем credentials.json из переменной
+# 🔐 Сохраняем credentials.json из переменной окружения
 def save_credentials_from_env():
     encoded_creds = os.getenv("CREDENTIALS_JSON")
     if not encoded_creds:
@@ -18,6 +17,7 @@ def save_credentials_from_env():
 
 save_credentials_from_env()
 
+# 🔧 Логгинг
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,8 @@ def send_telegram_notification(tin, ticket_url, target_ws, row_num, target_heade
         logger.error(f"❌ Ошибка Telegram: {resp.text}")
 
 def main():
+    logger.info("🚀 Скрипт запущен, читаем Google Таблицу...")
+
     SPREADSHEET_ID = '1JeYJqv5q_S3CfC855Tl5xjP7nD5Fkw9jQXrVyvEXK1Y'
     SOURCE_SHEET = 'unique drivers main'
     TARGET_SHEET = 'NO_REQUIRED_PERMISSIONS'
@@ -101,7 +103,7 @@ def main():
         usedesk_link = row[-2].strip() if len(row) >= len(target_header) - 1 else ""
         telegram_status = row[-1].strip().lower() if len(row) >= len(target_header) else ""
 
-        logger.info(f"🔍 Обрабатываю строку {i}: ИИН={tin}, ЭСФ={esf_status}, phone={phone}")
+        logger.info(f"🔍 Строка {i}: ИИН={tin}, ЭСФ={esf_status}, phone={phone}")
 
         if not tin or not phone or not name_full:
             logger.info("❌ Пропущено: пустой tin, phone или name")
@@ -110,7 +112,7 @@ def main():
             logger.info(f"⛔ Пропущено: статус ЭСФ = {esf_status}, нужен NO_REQUIRED_PERMISSIONS")
             continue
         if usedesk_link and telegram_status == "отправлено":
-            logger.info("⏩ Уже обработано ранее — UseDesk и Telegram заполнены")
+            logger.info("⏩ Уже обработано — UseDesk и Telegram заполнены")
             continue
 
         try:
@@ -160,9 +162,9 @@ def main():
                     send_telegram_notification(tin, ticket_url, target_ws, i, target_header)
                     logger.info(f"✏️ Обновлён тикет {oldest_ticket}")
                 else:
-                    logger.warning(f"⚠️ Тикет закрыт или не найден. Можно создать новый при необходимости.")
+                    logger.warning(f"⚠️ Тикет закрыт или не найден — можно создать новый")
             else:
-                logger.warning(f"📭 У клиента нет тикетов. Можно создать новый при необходимости.")
+                logger.warning(f"📭 У клиента нет тикетов — можно создать")
 
         except Exception as e:
             logger.error(f"❌ Ошибка обработки строки {tin}: {e}")
