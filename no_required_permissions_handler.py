@@ -1,10 +1,51 @@
-# ...импорты и функции save_credentials(), extract_first_and_middle(), get_latest_open_ticket — без изменений...
+import os
+import gspread
+import logging
+import base64
+import time
+import warnings
+from datetime import datetime, timedelta, timezone
+import requests
+from oauth2client.service_account import ServiceAccountCredentials
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def save_credentials():
+    encoded_creds = os.getenv("CREDENTIALS_JSON")
+    if not encoded_creds:
+        raise Exception("❌ CREDENTIALS_JSON не найдена")
+    decoded_creds = base64.b64decode(encoded_creds).decode("utf-8")
+    with open("credentials.json", "w") as f:
+        f.write(decoded_creds)
+
+def extract_first_and_middle(name: str):
+    parts = name.strip().split()
+    return " ".join(parts[:2]) if len(parts) >= 2 else name.strip()
+
+def get_latest_open_ticket(client_data, token):
+    tickets = client_data.get("tickets", [])
+    for ticket_id in reversed(tickets):
+        try:
+            resp = requests.post("https://api.usedesk.ru/ticket", json={
+                "api_token": token,
+                "ticket_id": ticket_id
+            })
+            data = resp.json()
+            status = data.get("ticket", {}).get("status_id")
+            if status and int(status) != 3:
+                return ticket_id
+        except:
+            continue
+    return None
 
 def main():
     save_credentials()
 
     SPREADSHEET_ID = '1JeYJqv5q_S3CfC855Tl5xjP7nD5Fkw9jQXrVyvEXK1Y'
-    SOURCE_SHEET = 'unique drivers mainnnne'  # Тестовый лист
+    SOURCE_SHEET = 'unique drivers mainnnne'
     TARGET_SHEET = 'NO_REQUIRED_PERMISSIONS'
 
     USE_DESK_TOKEN = os.getenv("USE_DESK_TOKEN")
@@ -80,7 +121,6 @@ def main():
             res_json = search_resp.json()
             clients = res_json.get("clients", []) if isinstance(res_json, dict) else res_json
 
-            # Точная проверка номера
             client_data = next(
                 (c for c in clients if phone in c.get("phone", "").split(",")),
                 None
