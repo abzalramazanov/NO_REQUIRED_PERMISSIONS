@@ -50,7 +50,7 @@ def send_telegram_notification(tin, ticket_url, target_ws, row_num, target_heade
     text = (
         f"♿️ Ошибка у клиента:\n"
         f"ИИН: {tin}\n"
-        f"Ошибка: NO_REQUIRED_TAXPAYER_STATE ( нет статус ИП )\n"
+        f"Ошибка: NO_REQUIRED_PERMISSIONS ( нет статус ИП )\n"
         f"Тикет создан: {ticket_url}"
     )
     resp = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", data={
