@@ -120,7 +120,7 @@ def main():
 
         logger.info(f"🔍 Строка {i}: ИИН={tin}, ЭСФ={esf_status}, phone={phone}")
 
-        # 🔄 Обновляем дату, если статус уже не NO_REQUIRED_PERMISSIONS
+        # 🔄 Обновляем дату и статус, если статус уже не NO_REQUIRED_PERMISSIONS
         source_match = next((r for r in source_data if len(r) > tin_idx and r[tin_idx].strip() == tin), None)
         if source_match:
             actual_esf_status = source_match[esf_idx].strip()
@@ -128,7 +128,8 @@ def main():
                 now_update = datetime.now(timezone(timedelta(hours=5))).strftime("%Y-%m-%d %H:%M:%S")
                 try:
                     target_ws.update_cell(i, target_header.index("Обновлено") + 1, now_update)
-                    logger.info(f"🟡 Статус ЭСФ для {tin} изменился — обновлено время")
+                    target_ws.update_cell(i, esf_idx + 1, actual_esf_status)
+                logger.info(f"🟡 Статус ЭСФ для {tin} изменился — обновлено время и статус")
                 except Exception as e:
                     logger.warning(f"⚠️ Не удалось обновить 'Обновлено' для {tin}: {e}")
 
