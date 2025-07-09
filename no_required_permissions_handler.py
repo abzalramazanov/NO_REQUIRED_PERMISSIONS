@@ -127,9 +127,8 @@ def main():
             if actual_esf_status != "NO_REQUIRED_PERMISSIONS":
                 now_update = datetime.now(timezone(timedelta(hours=5))).strftime("%Y-%m-%d %H:%M:%S")
                 try:
-                    target_ws.update_cell(i, target_header.index("Обновлено") + 1, now_update)
                     target_ws.update_cell(i, esf_idx + 1, actual_esf_status)
-                logger.info(f"🟡 Статус ЭСФ для {tin} изменился — обновлено время и статус")
+                    logger.info(f"🟡 Статус ЭСФ для {tin} изменился — обновлено время и статус")
                 except Exception as e:
                     logger.warning(f"⚠️ Не удалось обновить 'Обновлено' для {tin}: {e}")
 
