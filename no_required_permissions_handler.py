@@ -1,4 +1,3 @@
-
 import os
 import gspread
 import logging
@@ -120,6 +119,18 @@ def main():
         telegram_status = row[-1].strip().lower() if len(row) >= len(target_header) else ""
 
         logger.info(f"🔍 Строка {i}: ИИН={tin}, ЭСФ={esf_status}, phone={phone}")
+
+        # 🔄 Обновляем дату, если статус уже не NO_REQUIRED_PERMISSIONS
+        source_match = next((r for r in source_data if len(r) > tin_idx and r[tin_idx].strip() == tin), None)
+        if source_match:
+            actual_esf_status = source_match[esf_idx].strip()
+            if actual_esf_status != "NO_REQUIRED_PERMISSIONS":
+                now_update = datetime.now(timezone(timedelta(hours=5))).strftime("%Y-%m-%d %H:%M:%S")
+                try:
+                    target_ws.update_cell(i, target_header.index("Обновлено") + 1, now_update)
+                    logger.info(f"🟡 Статус ЭСФ для {tin} изменился — обновлено время")
+                except Exception as e:
+                    logger.warning(f"⚠️ Не удалось обновить 'Обновлено' для {tin}: {e}")
 
         if not tin or not phone or not name_full:
             logger.info("❌ Пропущено: пустой tin, phone или name")
